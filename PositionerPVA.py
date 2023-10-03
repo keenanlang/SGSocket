@@ -1,6 +1,8 @@
 #!/APSshare/anaconda3/x86_64/bin/python
 
+import json
 import time
+import numpy
 import socket
 import random
 import pickle
@@ -23,50 +25,56 @@ def addEvent(output, next_ID):
 
 	
 # Buffering 1,000 events per update
-def addAllEvents(output):
-	data = output.get()
+def addAllEvents(output, data):
+	last_data = output.get()
+	temp_data = {}
 	
-	last_event = 0
-	
-	if len(data['eventIDs']):
-		last_event = data['eventIDs'][-1]
+	for axis in data.keys():
+		last_event = -1
+		temp_data[axis] = {}
 		
-	data['numEvents'] = 0
-	data['eventIDs'] = []
-	data['positions'] = []
-	
-	
-	for index in range(1000):
-		last_event += 1
-		addEvent(data, last_event)
+		if len(last_data[axis]['eventIDs']):
+			last_event = last_data[axis]['eventIDs'][-1]
+			
+		temp_data[axis]['numEvents'] = len(data[axis])
+		temp_data[axis]['eventIDs'] = [ int(x) for x in range(int(last_event + 1), int(last_event + len(data[axis]) + 1)) ]
+		temp_data[axis]['positions'] = data[axis]
 		
-	output.set(data)
-	
+	output.set(temp_data)
 
 AXIS_TEMPLATE = {
 'numEvents'    : ULONG, 
-'eventIDs'  : [ ULONG  ],
-'positions' : [ DOUBLE ]
+'eventIDs'  : [ ULONG ],
+'positions' : [ LONG ]
 }
 
 # Having a PVA output per different axis
-pv1 = PvObject(AXIS_TEMPLATE)
-pv2 = PvObject(AXIS_TEMPLATE)
-pv3 = PvObject(AXIS_TEMPLATE)
+#pv1 = PvObject(AXIS_TEMPLATE)
+#pv2 = PvObject(AXIS_TEMPLATE)
+#pv3 = PvObject(AXIS_TEMPLATE)
 
-
-# For example, we'll only serve a single axis
-xServer = PvaServer('x_axis', pv1)
-
-
-
-async def get_data():	
+async def get_data():
+	config_data = None
+	
+	with open("PositionerConfig.json") as config:
+		config_data = json.load(config)
+		
+	pv_template = {}
+	
+	for axis in config_data.keys():
+		pv_template[axis] = AXIS_TEMPLATE
+		
+	pv1 = PvObject(pv_template)
+	
+	# For example, we'll only serve a single axis
+	xServer = PvaServer('Positions', pv1)
+		
 	reader, writer = await asyncio.open_connection('127.0.0.1', 7000)
 	
 	print("Connected")
 	
 	while True:
-		data = await reader.read(12288)
+		data = await reader.read(6496)
 		
 		print("Read data")
 		
@@ -76,6 +84,23 @@ async def get_data():
 			await writer.wait_closed()
 			return		
 			
-		addAllEvents(pv1)
+		vals = pickle.loads(data) 
+		
+		test = {}
+		my_func = numpy.vectorize(lambda x,y : x+y)
+		
+		
+		for axis in config_data.keys():
+			my_func = numpy.vectorize(lambda A,B : eval(config_data[axis]["calc"]))
+			
+			streams = config_data[axis]["streams"]
+			
+			stream1 = vals[streams[0]]
+			stream2 = vals[streams[1]]
+			
+			out_data = my_func(stream1, stream2)
+			test[axis] = out_data
+			
+		addAllEvents(pv1, test)
 
 asyncio.run(get_data())
