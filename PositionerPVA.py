@@ -6,6 +6,7 @@ import time
 import copy
 import h5py
 import array
+import numpy
 import ctypes
 import asyncio
 
@@ -23,14 +24,14 @@ class PositionerServer(PvaServer):
 		
 		self.wait_time = 1.0 / float(self.config["PVA"]["Max-Rate"])
 		self.output_file_path = "./output.h5"
-				
-		self.pva_queue = Queue()
+		
+		self.manager = Manager()
+		
+		self.pva_queue = self.manager.Queue()
 		self.hf5_queue = Queue()
 		
 		self.pva_process = None
 		self.hf5_process = None
-		
-		self.manager = Manager()
 		
 		self.status = self.manager.Value(ctypes.c_wchar_p, "Idle")
 				
@@ -90,30 +91,30 @@ class PositionerServer(PvaServer):
 			self.writer.write(bytes("senddata", "utf-8"))
 			await self.writer.drain()
 
-			bytes_data = await self.reader.readexactly(4 * num_words)
-			int_data = array.array('I')
+			int_data = numpy.frombuffer(await self.reader.readexactly(4 * num_words), dtype="<u4").copy()
+			int_data.flags.writeable = True
 			
-			for i in range(num_words):
-				int_data.append(int.from_bytes(bytes_data[4*i:4*i+4], byteorder='little'))
+			self.hf5_queue.put(int_data)
 			
-			index = 0
+			#self.pva_queue.put(copy.copy(int_data))
 			
-			while (index < 10000):
-				if not int_data[index] & 0x80000000:
-					index += 1
-					continue
-						
-				if (int_data[4] & 0xC0000000 == 0xC0000000):
-					print("Found 24 word event {:08x} at {:d}".format(int_data[index], index))
-					index += 24
-					continue
-				
-						
-				int_data[index] &= ~0x80000000
-				self.hf5_queue.put(copy.copy(int_data[index:index+8]))
-				#self.pva_queue.append(copy.copy(int_data[index:index+8]))
-					
-				index += 8
+			#index = 0
+			
+			#while (index < int(self.config["softglue"]["Packet-Size"])):
+			#	if not int_data[index] & 0x80000000:
+			#		index += 1
+			#		continue
+			#			
+			#	if (int_data[index] & 0xC0000000 == 0xC0000000):
+			#		print("Found 24 word event {:08x} at {:d}".format(int_data[index], index))
+			#		index += 24
+			#		continue
+			#	
+			#			
+			#	int_data[index] &= ~0x80000000
+			#	self.hf5_queue.put(int_data[index:index+8].copy())
+			#		
+			#	index += 8
 				
 			yield
 			
@@ -140,6 +141,7 @@ class PositionerServer(PvaServer):
 	def _reset(self, data):
 		print("Writing to: ", self.config["softglue"]["Prefix"] + "1acquireDma.F")
 		caput(self.config["softglue"]["Prefix"] + "1acquireDma.F", 1)
+		time.sleep(1.0)
 		data["value"] = 0
 		
 		
@@ -150,7 +152,9 @@ class PositionerServer(PvaServer):
 		print("Starting Communication")
 		
 		self.hf5_process = Process(target=self.write_h5, args=(self.hf5_queue, self.status))
+		#self.pva_process = Process(target=self.output_pva, args=(self.pva_queue, self.status))
 		self.hf5_process.start()
+		#self.pva_process.start()
 		
 		self.running = True
 		
@@ -164,8 +168,8 @@ class PositionerServer(PvaServer):
 		self.setStatus("Stopping")
 		
 		self.hf5_process.join()
+		#self.pva_process.join()
 		
-		#with self.status.get_lock():
 		self.setStatus("Idle")
 		
 		data["value"] = 0
@@ -197,25 +201,96 @@ class PositionerServer(PvaServer):
 				time.sleep(self.wait_time)
 				continue
 				
-			packet = queue.get()
+			transfer = queue.get()
 			
-			for i in range(8):
-				eventlabel = self.config["events.8word"][str(i+1)]
-				dsets[eventlabel][index:index+1] = packet[i]
-				
-			index += 1
+			offset = 0
 			
-			if (index >= check_length):
-				check_length += self.length_multiple
+			while (offset < int(self.config["softglue"]["Packet-Size"])):
+				if not transfer[offset] & 0x80000000:
+					offset += 1
+					continue
+						
+				if (transfer[offset] & 0xC0000000 == 0xC0000000):
+					print("Found 24 word event {:08x} at {:d}".format(transfer[offset], offset))
+					offset += 24
+					continue
 				
-				for item in dsets.values():
-					item.resize((check_length,))
+				transfer[offset] &= ~0x80000000
+				
+				for i in range(8):
+					eventlabel = self.config["events.8word"][str(i+1)]
+					dsets[eventlabel][index:index+1] = transfer[offset+i]
+					
+				offset += 8
+				index += 1
+			
+				if (index >= check_length):
+					check_length += self.length_multiple
+				
+					for item in dsets.values():
+						item.resize((check_length,))
 					
 		output_file[self.config["HDF5"]["dataset"]].attrs["numEvents"] = index
 					
 		output_file.flush()
 		output_file.close()
+		
+		
+		
+	def output_pva(self, queue, status):
+		
+		pv_template = {"numEvents" : LONG, "streams" : [{ "name" : STRING, "events" : [ ULONG ]}]}
+		pv_initial  = {"numEvents" : 0,    "streams" : []}
+		
+		for num, label in self.config["events.8word"].items():
+			pv_initial["streams"].append({"name" : label, "events" : [] })
 			
+			
+		pvstream = PvObject(pv_template, pv_initial)			
+		server = PvaServer(self.config["PVA"]["Prefix"] + self.config["PVA"]["PV"], pvstream)
+		
+		while True:
+			if queue.empty():
+				if status.value != "Acquiring":
+					break
+				
+				time.sleep(self.wait_time)
+				continue
+				
+			
+			transfer = queue.get()
+			
+			output = {"streams" : [] }
+			for num, label in self.config["events.8word"].items():
+				output["streams"].append({"name" : label, "events" : [] })
+			
+			index = 0
+			events = 0
+			
+			while (index < int(self.config["softglue"]["Packet-Size"])):
+				if not transfer[index] & 0x80000000:
+					index += 1
+					continue
+						
+				if (transfer[index] & 0xC0000000 == 0xC0000000):
+					print("Found 24 word event {:08x} at {:d}".format(transfer[index], index))
+					index += 24
+					continue
+				
+				events += 1
+				transfer[index] &= ~0x80000000
+				
+				for i in range(8):
+					output["streams"][i]["events"].append(transfer[index + i])
+					
+				index += 8
+		
+			output["numEvents"] = events
+			
+			pvstream.set(output)
+		
+		server.stop()
+		
 				
 		
 				
