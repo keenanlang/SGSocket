@@ -95,8 +95,7 @@ class PositionerServer(PvaServer):
 			int_data.flags.writeable = True
 			
 			self.hf5_queue.put(int_data)
-			
-			#self.pva_queue.put(copy.copy(int_data))
+			self.pva_queue.put(int_data)
 			
 			#index = 0
 			
@@ -152,9 +151,9 @@ class PositionerServer(PvaServer):
 		print("Starting Communication")
 		
 		self.hf5_process = Process(target=self.write_h5, args=(self.hf5_queue, self.status))
-		#self.pva_process = Process(target=self.output_pva, args=(self.pva_queue, self.status))
+		self.pva_process = Process(target=self.output_pva, args=(self.pva_queue, self.status))
 		self.hf5_process.start()
-		#self.pva_process.start()
+		self.pva_process.start()
 		
 		self.running = True
 		
