@@ -175,8 +175,8 @@ class PositionerServer(PvaServer):
 		
 		
 	def _update_file(self, data):
-		if not data["filePath"]["value"].endswith("/"):
-			data["filePath"]["value"] += "/"
+		if not data["filePath"].endswith("/"):
+			data["filePath"] += "/"
 		
 		self.output_file_path = data["filePath"] + data["fileName"]
 		
