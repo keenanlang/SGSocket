@@ -167,7 +167,7 @@ class PositionerServer(PvaServer):
 		self.setStatus("Stopping")
 		
 		self.hf5_process.join()
-		#self.pva_process.join()
+		self.pva_process.join()
 		
 		self.setStatus("Idle")
 		
@@ -280,7 +280,7 @@ class PositionerServer(PvaServer):
 				transfer[index] &= ~0x80000000
 				
 				for i in range(8):
-					output["streams"][i]["events"].append(transfer[index + i])
+					output["streams"][i]["events"].append(int(transfer[index + i]))
 					
 				index += 8
 		
