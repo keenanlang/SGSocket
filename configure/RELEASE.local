@@ -1,0 +1,5 @@
+EPICS_BASE=/APSshare/epics/base-7.0.8
+SUPPORT=/APSshare/epics/synApps_6_3/support
+
+-include $(SUPPORT)/configure/RELEASE
+-include $(AREA_DETECTOR)/configure/RELEASE_LIBS_INCLUDE
