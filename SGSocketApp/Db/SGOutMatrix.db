@@ -1,48 +1,39 @@
-record(luascript, "$(P)$(R)Name_$(COL)")
+record(luascript, "$(P)$(R)Name_$(INDEX)")
 {
 	field(PINI, "YES")
 	field(AA, "$(NAME)")
-	field(OUT, "$(P)$(R)OutMatrix$(COL)_Name PP")
+	field(OUT, "$(P)$(R)OutMatrix$(INDEX)_Name PP")
 	field(CODE, "return table.pack(AA:byte(1,AA:len()))")
 }
 
-record(waveform, "$(P)$(R)OutMatrix$(COL)_Name")
+record(waveform, "$(P)$(R)OutMatrix$(INDEX)_Name")
 {
     field(DTYP, "asynOctetWrite")
-    field(INP,  "@asyn($(PORT),$(COL),$(TIMEOUT=1))SG_OUT_NAMES")
+    field(INP,  "@asyn($(PORT),$(INDEX),$(TIMEOUT=1))SG_OUT_NAMES")
     field(FTVL, "CHAR")
     field(NELM, "256")
 }
 
-record(waveform, "$(P)$(R)Init_$(COL)")
+record(waveform, "$(P)$(R)Init_$(INDEX)")
 {
-	field(INP, "$(VAL)")
+	field(INP, "$(MATRIX)")
 	field(FTVL, "DOUBLE")
 	field(NELM, "24")
 }
 
-record(luascript, "$(P)$(R)Copy_$(COL)")
+record(luascript, "$(P)$(R)Copy_$(INDEX)")
 {
 	field(PINI, "YES")
-	field(INAA, "$(P)$(R)Init_$(COL) PP")
-	field(OUT,  "$(P)$(R)OutMatrix_$(COL).VAL PP")
+	field(INAA, "$(P)$(R)Init_$(INDEX) PP")
+	field(OUT,  "$(P)$(R)OutMatrix_$(INDEX).VAL PP")
 	field(CODE, "return AA")
 }
 
-record(waveform, "$(P)$(R)OutMatrix_$(COL)")
+record(waveform, "$(P)$(R)OutMatrix_$(INDEX)")
 {
 	field(DTYP, "asynFloat64ArrayOut")
-	field(INP, "@asyn($(PORT), $(COL), $(TIMEOUT=1))SG_OUT_MATRIX")
+	field(INP, "@asyn($(PORT), $(INDEX), $(TIMEOUT=1))SG_OUT_MATRIX")
 	field(FTVL, "DOUBLE")
 	field(NELM, "24")
-	field(FLNK, "$(P)$(R)OutMatrix_$(COL)_0")
-}
-
-record(subArray, "$(P)$(R)OutMatrix_$(COL)_0")
-{
-	field(INP, "$(P)$(R)OutMatrix_$(COL)")
-	field(INDX, "0")
-	field(FTVL, "DOUBLE")
-	field(MALM, "24")
-	field(NELM, "1")
+	field(FLNK, "$(P)$(R)OutMatrix_$(INDEX)_0")
 }
