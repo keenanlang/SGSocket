@@ -389,6 +389,7 @@ asynStatus SGSocket::writeInt32(asynUser* pasynuser, epicsInt32 value)
 		}
 		else if (!value && (adStatus == ADAcquire))
 		{
+			this->stopAcquireEvent->trigger();
 		}
 	}
 	else
