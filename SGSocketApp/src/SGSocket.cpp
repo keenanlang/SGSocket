@@ -261,15 +261,18 @@ void SGSocket::collectThread()
 		{
 			// If we're not in an event, search for the first word that has the flag bit set
 			if (!copying_data && !(as_ints[offset] & 0x80000000))    { continue; }
+			if (copying_data && !(as_ints[offset] & 0x80000000))    { printf("Received event within event, throwing out existing data\n"); }
 		
 			// Two bits for 24 word event, 1 bit for 8 word
 			if ((as_ints[offset] & 0xC0000000) == 0xC0000000)
 			{
+				index = 0;
 				event_size = 24;
 				copying_data = true;
 			}
 			else if ((as_ints[offset] & 0x80000000) == 0x80000000)
 			{
+				index = 0;
 				event_size = 8;
 				copying_data = true;
 			}
@@ -286,9 +289,6 @@ void SGSocket::collectThread()
 					updateTimeStamps(new_frame);
 					
 					int* output = (int*) new_frame->pData;
-					
-					//the_data[0] = index;
-					//output[0] = index;
 					
 					for (int data = 0; data < 24; data += 1)    { output[data] = the_data[data]; }
 					
@@ -309,6 +309,7 @@ void SGSocket::collectThread()
 					}
 					
 					this->pushFrame(new_frame);
+					copying_data = false;
 				}
 			}
 		}
