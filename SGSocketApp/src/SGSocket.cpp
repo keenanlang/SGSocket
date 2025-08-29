@@ -225,7 +225,8 @@ void SGSocket::exportFrameThread()
 void SGSocket::collectThread()
 {
 	size_t imagedims[1] = { (size_t) 24 };
-		
+	
+	// Area to contain most recent data for each column
 	std::vector<int> the_data;
 	the_data.reserve(24);
 	
@@ -244,8 +245,7 @@ void SGSocket::collectThread()
 		recv(this->socket, check, 10, 0);
 		int numw = atoi(check);
 		
-		printf("numw: %d\n", numw);
-		
+		// Can only receive data if there are at least a certain number of words
 		if (numw < PACKET_SIZE)    { continue; }
 		
 		const char* get_data = "senddata";
@@ -254,19 +254,21 @@ void SGSocket::collectThread()
 		char output[4*PACKET_SIZE] = {0};
 		recv(this->socket, output, 4*PACKET_SIZE, MSG_WAITALL);
 		
+		// Data is received as chars, break up into words
 		int* as_ints = (int*) output;
 		
 		for (int offset = 0; offset < PACKET_SIZE; offset += 1)
 		{
+			// If we're not in an event, search for the first word that has the flag bit set
 			if (!copying_data && !(as_ints[offset] & 0x80000000))    { continue; }
 		
-			if (as_ints[offset] & 0xC0000000 == 0xC0000000)
+			// Two bits for 24 word event, 1 bit for 8 word
+			if ((as_ints[offset] & 0xC0000000) == 0xC0000000)
 			{
-				printf("Found 24 word event\n");
 				event_size = 24;
 				copying_data = true;
 			}
-			else if (as_ints[offset] & 0x80000000 == 0x80000000)
+			else if ((as_ints[offset] & 0x80000000) == 0x80000000)
 			{
 				event_size = 8;
 				copying_data = true;
@@ -285,23 +287,23 @@ void SGSocket::collectThread()
 					
 					int* output = (int*) new_frame->pData;
 					
-					the_data[0] = index;
-					output[0] = index;
+					//the_data[0] = index;
+					//output[0] = index;
 					
-					for (int data = 1; data < 24; data += 1)    { output[data] = the_data[data]; }
+					for (int data = 0; data < 24; data += 1)    { output[data] = the_data[data]; }
 					
-					for (int index = 0; index < this->outputs_used; index += 1)
+					for (int attr_index = 0; attr_index < this->outputs_used; attr_index += 1)
 					{
 						epicsFloat64 product = 0.0;
 					
 						for (int element = 0; element < 24; element += 1)
 						{
-							int offset = index * 24 + element;
-							product += the_data[element] * this->output_matrix[offset];
+							int attr_offset = attr_index * 24 + element;
+							product += the_data[element] * this->output_matrix[attr_offset];
 						}
 						
 						std::string output_name;
-						getStringParam(index, SGOutputNames, output_name);
+						getStringParam(attr_index, SGOutputNames, output_name);
 						
 						new_frame->pAttributeList->add(output_name.c_str(), "", NDAttrFloat64, &product);
 					}
